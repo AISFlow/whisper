@@ -77,3 +77,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - uses: meeDamian/sync-readme@v1.0.6
+        with:
+          user: ${{ secrets.DOCKER_USER }}
+          pass: ${{ secrets.DOCKER_TOKEN }}
+          description: true

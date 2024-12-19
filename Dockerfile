@@ -1,7 +1,9 @@
 FROM pytorch/pytorch:2.5.0-cuda12.4-cudnn9-runtime AS builder
 
 # Set environment variables
-ENV TORCH_HOME=/workspace/models
+ENV TORCH_HOME=/workspace/models \
+    PYTHONUNBUFFERED=1 \
+    PATH="/workspace/.local/bin:${PATH}"
 
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ffmpeg tini && \

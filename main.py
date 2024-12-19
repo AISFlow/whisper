@@ -120,6 +120,9 @@ def format_result(result: dict, fmt: str) -> Union[dict, str]:
     """
     segments = result.get("segments", [])
     
+    if fmt == "txt":
+        fmt = "text"
+
     if fmt == "text":
         return result.get("text", "")
     
@@ -198,7 +201,7 @@ async def transcribe(
         task (str): The transcription task ('transcribe' or 'translate').
         language (Optional[str]): The language of the audio.
         temperature (Optional[float]): Sampling temperature.
-        response_format (Optional[str]): The format of the response ('json', 'text', 'srt', 'vtt').
+        response_format (Optional[str]): The format of the response ('json', 'text', 'srt', 'vtt', 'txt').
 
     Returns:
         Union[TranscriptionResponse, str]: The transcription result in the requested format.
@@ -206,7 +209,8 @@ async def transcribe(
     Raises:
         HTTPException: If an invalid response format is specified or transcription fails.
     """
-    if response_format not in {"json", "text", "srt", "vtt"}:
+    allowed_formats = {"json", "text", "srt", "vtt", "txt"}
+    if response_format not in allowed_formats:
         logger.error(f"Invalid response format requested: {response_format}")
         raise HTTPException(status_code=400, detail="Invalid response format.")
     

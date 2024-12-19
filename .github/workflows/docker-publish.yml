@@ -1,0 +1,78 @@
+name: Docker (TEST)
+
+on:
+  push:
+    paths:
+      - 'Dockerfile'
+  workflow_dispatch:
+
+env:
+  REGISTRY_GHCR: ghcr.io
+  REGISTRY_DOCKER: docker.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}
+            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value={{date 'YYYYMMDD-HHmmss' tz='Asia/Seoul'}}
+            type=raw,value=latest
+          labels: |
+            maintainer=fvoci@aisflow.com
+
+      - name: Set version based on tag
+        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_VERSION }}
+
+      - name: Set Clean Version
+        run: |
+          CLEAN_VERSION="${{ env.RELEASE_VERSION }}"
+          echo "VERSION=${CLEAN_VERSION}" >> $GITHUB_ENV
+
+      - name: Convert IMAGE_NAME to lowercase
+        run: |
+          LOWER_CASE_IMAGE_NAME=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          echo "LOWER_CASE=${LOWER_CASE_IMAGE_NAME}" >> $GITHUB_ENV
+
+      - name: Log into GitHub Container Registry (GHCR)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log into Docker Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_DOCKER }}
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Build and push to registries
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

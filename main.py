@@ -186,7 +186,7 @@ async def get_models():
 @app.post("/transcribe", response_model=Union[TranscriptionResponse, str])
 async def transcribe(
     file: UploadFile = File(...),
-    model_name: str = Form("base"),
+    model_name: str = Form("turbo"),
     task: str = Form("transcribe"),
     language: Optional[str] = Form(None),
     temperature: Optional[float] = Form(0.0),

@@ -17,6 +17,7 @@ curl -X GET http://localhost:8484/
 ```
 
 **응답 예시:**
+
 ```json
 {
   "message": "Welcome to the Enhanced Whisper API!"
@@ -32,6 +33,7 @@ curl -X GET http://localhost:8484/models
 ```
 
 **응답 예시:**
+
 ```json
 {
   "models": ["tiny", "base", "small", "medium", "large", "turbo"]
@@ -51,9 +53,9 @@ curl -X POST http://localhost:8484/transcribe \
 
 #### 추가 옵션 사용
 
-- **모델 선택 (`model_name`):** 사용할 Whisper 모델 이름 (기본값: `base`)
+- **모델 선택 (`model_name`):** 사용할 Whisper 모델 이름 (기본값: `turbo`)
 - **작업 유형 (`task`):** 전사 작업 유형 (`transcribe` 또는 `translate`, 기본값: `transcribe`)
-- **언어 지정 (`language`):** 오디오의 언어 (예: `en` for English)
+- **언어 지정 (`language`):** 오디오의 언어 (예: `ko` for Korean)
 - **온도 설정 (`temperature`):** 샘플링 온도 (기본값: `0.0`)
 - **응답 형식 (`response_format`):** 응답 형식 (`json`, `text`, `srt`, `vtt`, 기본값: `json`)
 
@@ -63,7 +65,7 @@ curl -X POST http://localhost:8484/transcribe \
 curl -X POST http://localhost:8484/transcribe \
   -F "file=@/path/to/your/audiofile.mp3" \
   -F "model_name=small" \
-  -F "language=en"
+  -F "language=ko"
 ```
 
 ##### 예제 2: SRT 형식으로 응답 받기
@@ -86,8 +88,9 @@ curl -X POST http://localhost:8484/transcribe \
 #### 응답 형식별 설명
 
 - **JSON (`json`):** 구조화된 JSON 형식의 응답. 기본 옵션입니다.
-  
+
   **응답 예시:**
+
   ```json
   {
     "filename": "audiofile.mp3",
@@ -106,6 +109,7 @@ curl -X POST http://localhost:8484/transcribe \
 - **텍스트 (`text`):** 전사된 텍스트만 반환.
 
   **응답 예시:**
+
   ```
   안녕하세요, 점검하고 있습니다.
   ```
@@ -113,6 +117,7 @@ curl -X POST http://localhost:8484/transcribe \
 - **SRT (`srt`):** 자막 파일 형식으로 반환.
 
   **응답 예시:**
+
   ```
   1
   00:00:00,000 --> 00:00:05,000
@@ -124,6 +129,7 @@ curl -X POST http://localhost:8484/transcribe \
 - **VTT (`vtt`):** WebVTT 자막 파일 형식으로 반환.
 
   **응답 예시:**
+
   ```
   00:00:00.000 --> 00:00:05.000
   안녕하세요, 점검하고 있습니다.
@@ -138,9 +144,9 @@ curl -X POST http://localhost:8484/transcribe \
 ```bash
 curl -X POST http://localhost:8484/transcribe \
   -F "file=@/path/to/your/audiofile.mp3" \
-  -F "model_name=medium" \
+  -F "model_name=turbo" \
   -F "task=transcribe" \
-  -F "language=en" \
+  -F "language=ko" \
   -F "temperature=0.2" \
   -F "response_format=txt"
 ```
@@ -156,6 +162,7 @@ curl -X POST http://localhost:8484/transcribe \
 ```
 
 **응답 예시:**
+
 ```json
 {
   "detail": "Invalid response format."

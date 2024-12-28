@@ -1,0 +1,12 @@
+services:
+  whisper:
+    image: aisflow/whisper
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ['gpu']
+    ports:
+      - '8484:8484'
+    stdin_open: true
+    tty: true

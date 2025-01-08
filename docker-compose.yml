@@ -1,6 +1,7 @@
 services:
   whisper:
     image: aisflow/whisper
+    restart: unless-stopped
     deploy:
       resources:
         reservations:

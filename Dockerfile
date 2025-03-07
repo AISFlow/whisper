@@ -1,41 +1,44 @@
-FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime AS builder
+# Base image with NVIDIA CUDA and cuDNN
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu24.04 AS builder
 
-# Set environment variables
-ENV TORCH_HOME=/workspace/models \
-    PYTHONUNBUFFERED=1 \
-    PATH="/workspace/.local/bin:${PATH}"
+# Copy uv binaries from upstream image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+# Install system dependencies and create a non-root user
 RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ffmpeg tini && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ffmpeg \
+        tini \
+        git && \
     rm -rf /var/lib/apt/lists/* && \
-        groupadd -g 1000 whisper && \
-        useradd -u 1000 -g whisper -d /workspace -s /bin/bash whisper && \
-    mkdir -p /workspace/output && mkdir -p ${TORCH_HOME} && \
-        chown -R whisper:whisper /workspace
+    groupadd -g 1001 whisper && \
+    useradd -u 1001 -g whisper --create-home --shell /bin/bash whisper
 
-# Switch to the 'whisper' user
+# Switch to non-root user
 USER whisper
 
+ENV UV_COMPILE_BYTECODE=1
+
 # Set working directory
-WORKDIR /workspace
+WORKDIR /home/whisper
 
-# Upgrade pip and install Python dependencies
-RUN python3 -m pip install --no-cache-dir -U pip && \
-    python3 -m pip install --no-cache-dir -U \
-        openai-whisper \
-        fastapi \
-        uvicorn[standard] \
-        python-multipart \
-        ffmpeg-python && \
-    python3 -c "import whisper; whisper.load_model('turbo')"
+# Copy dependency files first to leverage build cache
+COPY --chown=whisper:whisper pyproject.toml uv.lock ./
 
-# Copy application code
-COPY --chown=whisper:whisper ./main.py /workspace/main.py
+# Install Python dependencies using uv
+RUN uv sync --frozen --no-cache
 
-# Expose the port
+# Copy the entire application code (including preload scripts)
+COPY --chown=whisper:whisper app/ app/
+
+# Run preload script to load models
+RUN uv run app/preload/preload_all.py
+
+# Expose the application port
 EXPOSE 8484
 
+# Use Tini as the init process to manage signal forwarding
 ENTRYPOINT ["tini", "--"]
 
-# Start the Uvicorn server with the application
-CMD ["python", "-m", "uvicorn", "main:app", "--reload", "--host", "0.0.0.0", "--port", "8484"]
+# Start the FastAPI server with the specified host and port
+CMD ["./.venv/bin/fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8484"]

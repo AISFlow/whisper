@@ -1,5 +1,5 @@
 # Base image with NVIDIA CUDA and cuDNN
-FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu24.04 AS builder
+FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04 AS builder
 
 # Copy uv binaries from upstream image
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/

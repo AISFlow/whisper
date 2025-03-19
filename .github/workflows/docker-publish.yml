@@ -43,10 +43,9 @@ jobs:
       - name: Convert IMAGE_NAME to lowercase
         id: lower
         run: |
-          # Convert the IMAGE_NAME to lowercase using British English conventions
           LOWER_CASE_IMAGE_NAME=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
           echo "lower_case_image_name=${LOWER_CASE_IMAGE_NAME}" >> $GITHUB_OUTPUT
-           
+
   build-amd64:
     needs: [set-up]
     runs-on: ubuntu-latest
@@ -65,8 +64,8 @@ jobs:
           large-packages: true
           swap-storage: true
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      # - name: Set up QEMU
+      #   uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -111,7 +110,7 @@ jobs:
 
   build-arm64:
     needs: [set-up]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
@@ -126,8 +125,8 @@ jobs:
           large-packages: true
           swap-storage: true
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      # - name: Set up QEMU
+      #   uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

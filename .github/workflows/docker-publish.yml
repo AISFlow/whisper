@@ -46,17 +46,7 @@ jobs:
           # Convert the IMAGE_NAME to lowercase using British English conventions
           LOWER_CASE_IMAGE_NAME=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
           echo "lower_case_image_name=${LOWER_CASE_IMAGE_NAME}" >> $GITHUB_OUTPUT
-          
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          swap-storage: true
-          
+           
   build-amd64:
     needs: [set-up]
     runs-on: ubuntu-latest

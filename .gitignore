@@ -136,3 +136,7 @@ models
 __pycache__
 .venv
 *.sh
+
+*.mp4
+transcription_*.txt
+transcription_*.srt

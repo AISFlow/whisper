@@ -1,4 +1,4 @@
-name: Docker (TEST)
+name: Docker CI
 
 on:
   push:
@@ -21,6 +21,7 @@ jobs:
     outputs:
       tags: ${{ steps.meta.outputs.tags }}
       labels: ${{ steps.meta.outputs.labels }}
+      lower_case_image_name: ${{ steps.lower.outputs.lower_case_image_name }}
     steps:
       - name: Extract Docker metadata
         id: meta
@@ -35,25 +36,39 @@ jobs:
             type=semver,pattern={{major}}
             type=raw,value={{date 'YYYYMMDD-HHmmss' tz='Asia/Seoul'}}
           labels: |
-            maintainer=navystack@askfront.com
+            maintainer=aisflow@askfront.com
           flavor: |
             latest=true
 
-  build:
+      - name: Convert IMAGE_NAME to lowercase
+        id: lower
+        run: |
+          LOWER_CASE_IMAGE_NAME=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          echo "lower_case_image_name=${LOWER_CASE_IMAGE_NAME}" >> $GITHUB_OUTPUT
+
+  build-amd64:
     needs: [set-up]
-    strategy:
-      matrix:
-        platform: [amd64, arm64]
-    runs-on:
-      - linux
-      - ${{ matrix.platform }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
       id-token: write
     steps:
-      - name: Set version based on tag
-        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+
+      # - name: Set up QEMU
+      #   uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -62,13 +77,9 @@ jobs:
 
       - name: Set Clean Version
         run: |
+          # Set a clean version from the RELEASE_VERSION environment variable
           CLEAN_VERSION="${{ env.RELEASE_VERSION }}"
           echo "VERSION=${CLEAN_VERSION}" >> $GITHUB_ENV
-
-      - name: Convert IMAGE_NAME to lowercase
-        run: |
-          LOWER_CASE_IMAGE_NAME=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
-          echo "LOWER_CASE=${LOWER_CASE_IMAGE_NAME}" >> $GITHUB_ENV
 
       - name: Log into GitHub Container Registry (GHCR)
         if: github.event_name != 'pull_request'
@@ -86,32 +97,102 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: Build and push to GHCR
+      - name: Build and push (amd64)
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ env.REGISTRY_GHCR }}/${{ env.LOWER_CASE }}:${{ matrix.platform }}
+          tags: |
+            ${{ env.REGISTRY_GHCR }}/${{ needs.set-up.outputs.lower_case_image_name }}:amd64
+            ${{ env.REGISTRY_DOCKER }}/${{ needs.set-up.outputs.lower_case_image_name }}:amd64
           labels: ${{ needs.set-up.outputs.labels }}
-          platforms: linux/${{ matrix.platform }}
+          platforms: linux/amd64
 
-      - name: Build and push to Docker Hub
+  build-arm64:
+    needs: [set-up]
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+
+      # - name: Set up QEMU
+      #   uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_VERSION }}
+
+      - name: Set Clean Version
+        run: |
+          # Set a clean version from the RELEASE_VERSION environment variable
+          CLEAN_VERSION="${{ env.RELEASE_VERSION }}"
+          echo "VERSION=${CLEAN_VERSION}" >> $GITHUB_ENV
+
+      - name: Log into GitHub Container Registry (GHCR)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log into Docker Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_DOCKER }}
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Build and push (arm64)
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ env.REGISTRY_DOCKER }}/${{ env.LOWER_CASE }}:${{ matrix.platform }}
+          tags: |
+            ${{ env.REGISTRY_GHCR }}/${{ needs.set-up.outputs.lower_case_image_name }}:arm64
+            ${{ env.REGISTRY_DOCKER }}/${{ needs.set-up.outputs.lower_case_image_name }}:arm64
           labels: ${{ needs.set-up.outputs.labels }}
-          platforms: linux/${{ matrix.platform }}
+          platforms: linux/arm64
 
   manifest:
-    needs: [set-up, build]
-    runs-on: [linux, ARM64]
+    needs: [set-up, build-amd64, build-arm64]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
       id-token: write
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Log into GitHub Container Registry (GHCR)
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -127,11 +208,6 @@ jobs:
           registry: ${{ env.REGISTRY_DOCKER }}
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_TOKEN }}
-
-      - name: Convert IMAGE_NAME to lowercase
-        run: |
-          LOWER_CASE_IMAGE_NAME=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
-          echo "IMAGE_NAME_LOWER=${LOWER_CASE_IMAGE_NAME}" >> $GITHUB_ENV
 
       - name: Create and push Docker manifest
         uses: int128/docker-manifest-create-action@v2
@@ -141,5 +217,5 @@ jobs:
           tags: |
             ${{ needs.set-up.outputs.tags }}
           sources: |
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_LOWER }}:amd64
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_LOWER }}:arm64
+            ${{ env.REGISTRY_GHCR }}/${{ needs.set-up.outputs.lower_case_image_name }}:amd64
+            ${{ env.REGISTRY_GHCR }}/${{ needs.set-up.outputs.lower_case_image_name }}:arm64

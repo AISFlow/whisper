@@ -1,19 +1,38 @@
 [project]
 name = "whisper"
-version = "0.1.0"
+version = "0.2.3"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi[standard]>=0.115.11",
+    "fastapi[all,standard]>=0.115.11",
+    "faster-whisper>=1.1.1",
     "ffmpeg-python>=0.2.0",
+    "nvidia-cudnn-cu12>=9.5.0.50",
     "openai-whisper",
     "pydantic>=2.10.6",
     "python-multipart>=0.0.20",
     "torch>=2.6.0",
     "torchvision>=0.21.0",
+    "typer>=0.15.2",
     "uvicorn[standard]>=0.34.0",
+    "watchdog>=6.0.0",
+]
+
+[tool.uv]
+extra-index-url = [
+    "https://pypi.org/simple",
+    "https://download.pytorch.org/whl/cu124",
+    "https://pypi.ngc.nvidia.com",
 ]
 
 [tool.uv.sources]
-openai-whisper = { git = "https://github.com/openai/whisper.git", rev = "517a43ecd132a2089d85f4ebc044728a71d49f6e" }
+openai-whisper = { git = "https://github.com/openai/whisper.git", rev = "dd985ac4b90cafeef8712f2998d62c59c3e62d22" }
+
+[tool.ruff]
+line-length = 80
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "tab"
+docstring-code-format = true

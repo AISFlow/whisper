@@ -130,7 +130,10 @@ dist
 .pnp.*
 
 output
+processed
+input
 models
+rejected
 
 *.json
 __pycache__
@@ -140,3 +143,5 @@ __pycache__
 *.mp4
 transcription_*.txt
 transcription_*.srt
+
+.ruff_cache

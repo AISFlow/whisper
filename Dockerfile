@@ -17,6 +17,9 @@ RUN apt-get update && \
 # Switch to non-root user
 USER whisper
 
+# Model 및 HuggingFace 캐시 경로 고정
+ENV TRANSFORMERS_CACHE=/home/whisper/.cache/huggingface
+ENV WHISPER_CACHE=/home/whisper/.cache/whisper
 ENV UV_COMPILE_BYTECODE=1
 
 # Set working directory
@@ -31,8 +34,10 @@ RUN uv sync --frozen --no-cache
 # Copy the entire application code (including preload scripts)
 COPY --chown=whisper:whisper app/ app/
 
-# Run preload script to load models
-RUN uv run app/preload/preload_all.py
+# Run preload script to load all Whisper models (with cache)
+RUN uv run app/preload/preload_all.py && \
+    echo "Preload complete" && \
+    rm -rf /tmp/* /var/tmp/* ~/.cache/pip ~/.cache/huggingface/datasets
 
 # Expose the application port
 EXPOSE 8484
@@ -40,5 +45,5 @@ EXPOSE 8484
 # Use Tini as the init process to manage signal forwarding
 ENTRYPOINT ["tini", "--"]
 
-# Start the FastAPI server with the specified host and port
+# Start the FastAPI server
 CMD ["./.venv/bin/fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8484"]

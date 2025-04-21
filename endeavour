@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TARGET_UID="${UID:-1001}"
+TARGET_GID="${GID:-1001}"
+TARGET_USER="${USER:-whisper}"
+APP_DIR="/home/${TARGET_USER}"
+
+log() {
+    local level="$1"
+    local message="$2"
+    local color
+    local level_prefix
+
+    case "$level" in
+        INFO)
+            color='\033[0;32m' # Green
+            level_prefix="INFO:    "
+            ;;
+        WARN)
+            color='\033[0;33m' # Yellow
+            level_prefix="WARNING: "
+            ;;
+        *)
+            color='\033[0m' # No Color
+            level_prefix="$level:"
+            ;;
+    esac
+    
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    echo -e "${color}${level_prefix}\033[0m ${timestamp} - [endeavour] - ${message}"
+}
+
+if [ "$(id -u)" -ne 0 ]; then
+    log "WARN" "Not running as root. Skipping permission setup."
+    log "INFO" "Starting Whisper API server as current user..."
+    exec uvicorn app.main:app --host "0.0.0.0" --port "8000"
+fi
+
+log "INFO" "Setting user '${TARGET_USER}' to UID: ${TARGET_UID} and GID: ${TARGET_GID}"
+groupmod -o -g "${TARGET_GID}" "${TARGET_USER}"
+usermod -o -u "${TARGET_UID}" -g "${TARGET_GID}" "${TARGET_USER}"
+
+log "INFO" "Setting ownership for ${APP_DIR}..."
+chown -R "${TARGET_UID}:${TARGET_GID}" "${APP_DIR}"
+
+log "INFO" "Switching to user '${TARGET_USER}' and starting Whisper API server..."
+exec gosu "${TARGET_USER}" uvicorn app.main:app --host "0.0.0.0" --port "8000"

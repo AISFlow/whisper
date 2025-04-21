@@ -101,11 +101,11 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
           tags: |
             ${{ env.REGISTRY_GHCR }}/${{ needs.set-up.outputs.lower_case_image_name }}:amd64
             ${{ env.REGISTRY_DOCKER }}/${{ needs.set-up.outputs.lower_case_image_name }}:amd64
           labels: ${{ needs.set-up.outputs.labels }}
+          outputs: type=image,compression=zstd,compression-level=19,force-compression=true,push=true
           platforms: linux/amd64
 
   build-arm64:
@@ -162,11 +162,11 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
           tags: |
             ${{ env.REGISTRY_GHCR }}/${{ needs.set-up.outputs.lower_case_image_name }}:arm64
             ${{ env.REGISTRY_DOCKER }}/${{ needs.set-up.outputs.lower_case_image_name }}:arm64
           labels: ${{ needs.set-up.outputs.labels }}
+          outputs: type=image,compression=zstd,compression-level=19,force-compression=true,push=true
           platforms: linux/arm64
 
   manifest:
@@ -186,6 +186,11 @@ jobs:
           haskell: true
           large-packages: true
           swap-storage: true
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_VERSION }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -219,3 +224,11 @@ jobs:
           sources: |
             ${{ env.REGISTRY_GHCR }}/${{ needs.set-up.outputs.lower_case_image_name }}:amd64
             ${{ env.REGISTRY_GHCR }}/${{ needs.set-up.outputs.lower_case_image_name }}:arm64
+
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+          repository: ${{ needs.set-up.outputs.lower_case_image_name }}
+          readme-filepath: ./README.md

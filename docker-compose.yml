@@ -8,6 +8,16 @@ services:
           devices:
             - capabilities: ['gpu']
     ports:
-      - '8484:8484'
+      - '8484:8000'
+    volumes:
+      - ./app/input:/home/whisper/app/input
+      - ./app/output:/home/whisper/app/output
+      - ./app/processed:/home/whisper/app/processed
+      - ./app/rejected:/home/whisper/app/rejected
+      - ./app/main.py:/home/whisper/app/main.py
+    # command: bash
     stdin_open: true
     tty: true
+    environment:
+      - UID=1000
+      - GID=1000

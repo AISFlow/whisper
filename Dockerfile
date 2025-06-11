@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04 AS base
+FROM nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04 AS base
 
 ENV USERNAME=whisper
 ENV USER_UID=1001

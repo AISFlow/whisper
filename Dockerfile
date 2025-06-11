@@ -1,5 +1,4 @@
-# syntax=docker/dockerfile:1.4
-FROM nvidia/cuda:12.9.0-cudnn-runtime-ubuntu24.04 AS base
+FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04 AS base
 
 ENV USERNAME=whisper
 ENV USER_UID=1001

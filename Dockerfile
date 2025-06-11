@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.4
 FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04 AS base
 
-ARG USERNAME=whisper
-ARG USER_UID=1001
-ARG USER_GID=1001
+ENV USERNAME=whisper
+ENV USER_UID=1001
+ENV USER_GID=1001
 
 ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \

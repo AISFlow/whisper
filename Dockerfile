@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04 AS base
+FROM nvidia/cuda:12.9.0-cudnn-runtime-ubuntu24.04 AS base
 
 ENV USERNAME=whisper
 ENV USER_UID=1001
@@ -34,15 +34,15 @@ RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt,sharing=locked \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR ${HOME_DIR}
-RUN chown -R ${USERNAME}:${USERNAME} ${HOME_DIR}
+RUN chown -R 1001:1001 ${HOME_DIR}
 USER ${USERNAME}
 
 RUN uv venv --python 3.12 --seed
-COPY --chown=${USERNAME}:${USERNAME} pyproject.toml uv.lock ./
+COPY --link --chown=1001:1001 pyproject.toml uv.lock ./
 RUN uv sync --frozen
 RUN ls -al
 
-COPY --chown=${USERNAME}:${USERNAME} . .
+COPY --link --chown=1001:1001 . .
 RUN \
     echo "--- Preloading models... ---" && \
     uv run app/preload/preload_all.py --engine faster && \
@@ -55,9 +55,9 @@ FROM base AS final
 
 WORKDIR ${HOME_DIR}
 
-COPY --link --from=builder --chown=${USERNAME}:${USERNAME} ${VENV_PATH} ${VENV_PATH}
-COPY --link --from=builder --chown=${USERNAME}:${USERNAME} ${HOME_DIR}/.cache/ .cache/
-COPY --link --from=builder --chown=${USERNAME}:${USERNAME} ${HOME_DIR}/app/ app/
+COPY --link --from=builder --chown=1001:1001 ${VENV_PATH} ${VENV_PATH}
+COPY --link --from=builder --chown=1001:1001 ${HOME_DIR}/.cache/ .cache/
+COPY --link --from=builder --chown=1001:1001 ${HOME_DIR}/app/ app/
 
 USER ${USERNAME}
 EXPOSE 8000

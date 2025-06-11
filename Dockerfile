@@ -1,49 +1,70 @@
-# Base image with NVIDIA CUDA and cuDNN
-FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04 AS builder
+# syntax=docker/dockerfile:1.4
+FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04 AS base
 
-# Copy uv binaries from upstream image
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+ARG USERNAME=whisper
+ARG USER_UID=1001
+ARG USER_GID=1001
 
-# Install system dependencies and create a non-root user
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        ffmpeg \
-        tini \
-        git && \
-    rm -rf /var/lib/apt/lists/* && \
-    groupadd -g 1001 whisper && \
-    useradd -u 1001 -g whisper --create-home --shell /bin/bash whisper
+ENV PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    HOME_DIR=/home/${USERNAME} \
+    VENV_PATH=/home/${USERNAME}/.venv/
+ENV PATH="${VENV_PATH}/bin:${PATH}"
 
-# Switch to non-root user
-USER whisper
+RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=apt-lib,target=/var/lib/apt,sharing=locked \
+    apt-get update -qq && \
+    apt-get install -y -qq --no-install-recommends \
+      ffmpeg tini curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# Model 및 HuggingFace 캐시 경로 고정
-ENV TRANSFORMERS_CACHE=/home/whisper/.cache/huggingface
-ENV WHISPER_CACHE=/home/whisper/.cache/whisper
-ENV UV_COMPILE_BYTECODE=1
+RUN groupadd -g ${USER_GID} ${USERNAME} && \
+    useradd -u ${USER_UID} -g ${USERNAME} --create-home --shell /bin/bash ${USERNAME}
 
-# Set working directory
-WORKDIR /home/whisper
+COPY --link --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/
 
-# Copy dependency files first to leverage build cache
-COPY --chown=whisper:whisper pyproject.toml uv.lock ./
+# =====================================================================
+FROM base AS builder
 
-# Install Python dependencies using uv
-RUN uv sync --frozen --no-cache
+RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=apt-lib,target=/var/lib/apt,sharing=locked \
+    apt-get update -qq && \
+    apt-get install -y -qq --no-install-recommends \
+      build-essential git && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy the entire application code (including preload scripts)
-COPY --chown=whisper:whisper app/ app/
+WORKDIR ${HOME_DIR}
+RUN chown -R ${USERNAME}:${USERNAME} ${HOME_DIR}
+USER ${USERNAME}
 
-# Run preload script to load all Whisper models (with cache)
-RUN uv run app/preload/preload_all.py && \
-    echo "Preload complete" && \
-    rm -rf /tmp/* /var/tmp/* ~/.cache/pip ~/.cache/huggingface/datasets
+RUN uv venv --python 3.12 --seed
+COPY --chown=${USERNAME}:${USERNAME} pyproject.toml uv.lock ./
+RUN uv sync --frozen
+RUN ls -al
 
-# Expose the application port
-EXPOSE 8484
+COPY --chown=${USERNAME}:${USERNAME} . .
+RUN \
+    echo "--- Preloading models... ---" && \
+    uv run app/preload/preload_all.py --engine faster && \
+    uv run app/preload/preload_all.py --engine openai && \
+    echo "--- Preload complete. Cleaning up caches. ---" && \
+    rm -rf .cache/huggingface/datasets
 
-# Use Tini as the init process to manage signal forwarding
-ENTRYPOINT ["tini", "--"]
+# =====================================================================
+FROM base AS final
 
-# Start the FastAPI server
-CMD ["./.venv/bin/fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8484"]
+WORKDIR ${HOME_DIR}
+
+COPY --link --from=builder --chown=${USERNAME}:${USERNAME} ${VENV_PATH} ${VENV_PATH}
+COPY --link --from=builder --chown=${USERNAME}:${USERNAME} ${HOME_DIR}/.cache/ .cache/
+COPY --link --from=builder --chown=${USERNAME}:${USERNAME} ${HOME_DIR}/app/ app/
+
+USER ${USERNAME}
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl --fail http://localhost:8000/ || exit 1
+
+ENTRYPOINT [ "tini", "--", "/opt/nvidia/nvidia_entrypoint.sh" ]
+
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

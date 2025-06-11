@@ -1,242 +1,221 @@
-import os
+# app/main.py
+
+import gc
 import logging
+import os
 import tempfile
+from functools import lru_cache
+from logging.config import dictConfig
 from pathlib import Path
-from typing import Optional, List, Union
+from typing import List, Literal, Optional
 
 import torch
 import whisper
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form, status
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import PlainTextResponse
+from faster_whisper import WhisperModel
 from pydantic import BaseModel
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Determine the device to use for model inference
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-# Directory to store uploaded files temporarily
-UPLOAD_DIR = "/tmp"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# Default transcription settings
-DEFAULT_SETTINGS = {
-    "temperature": 0.0,
-    "task": "transcribe",
-    "verbose": False,
-    "language": None,
+LOGGING_CONFIG = {
+	'version': 1,
+	'disable_existing_loggers': False,
+	'formatters': {
+		'default': {
+			'format': '%(asctime)s - [%(levelname)s] - %(name)s - %(message)s',
+		},
+	},
+	'handlers': {
+		'default': {
+			'formatter': 'default',
+			'class': 'logging.StreamHandler',
+			'stream': 'ext://sys.stderr',
+		},
+	},
+	'loggers': {
+		'__main__': {
+			'handlers': ['default'],
+			'level': 'INFO',
+			'propagate': False,
+		},
+		'uvicorn': {
+			'handlers': ['default'],
+			'level': 'INFO',
+			'propagate': True,
+		},
+		'uvicorn.error': {'handlers': ['default'], 'level': 'INFO'},
+		'uvicorn.access': {
+			'handlers': ['default'],
+			'level': 'INFO',
+			'propagate': False,
+		},
+	},
 }
 
-# Define Pydantic models for the API responses
-class SegmentResponse(BaseModel):
-    start: float
-    end: float
-    text: str
 
-class TranscriptionResponse(BaseModel):
-    filename: str
-    language: str
-    segments: List[SegmentResponse]
+dictConfig(LOGGING_CONFIG)
 
-# Initialize the FastAPI application
-app = FastAPI()
+logger = logging.getLogger(__name__)
 
-def load_model(name: str) -> whisper.Whisper:
-    """
-    Load the specified Whisper model.
 
-    Args:
-        name (str): The name of the model to load.
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+COMPUTE_TYPE = 'default'
+if DEVICE == 'cuda':
+	gpu_info = torch.cuda.get_device_properties(0)
+	if gpu_info.major >= 8:
+		COMPUTE_TYPE = 'int8_float16'
+	else:
+		COMPUTE_TYPE = 'float16'
+else:
+	COMPUTE_TYPE = 'int8'
 
-    Returns:
-        whisper.Whisper: The loaded Whisper model.
+logger.info(f'사용 장치: {DEVICE}, 기본 연산 타입: {COMPUTE_TYPE}')
 
-    Raises:
-        HTTPException: If the model cannot be loaded.
-    """
-    try:
-        logger.info(f"Loading model: {name}")
-        return whisper.load_model(name, device=DEVICE)
-    except Exception as e:
-        logger.exception("Failed to load model.")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Model '{name}' could not be loaded."
-        )
+UPLOAD_DIR = Path(tempfile.gettempdir()) / 'whisper_uploads'
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-def save_file(file: UploadFile) -> Path:
-    """
-    Save the uploaded file to a temporary directory.
 
-    Args:
-        file (UploadFile): The uploaded file.
+class Segment(BaseModel):
+	start: float
+	end: float
+	text: str
 
-    Returns:
-        Path: The path to the saved file.
 
-    Raises:
-        HTTPException: If the file cannot be saved.
-    """
-    try:
-        suffix = Path(file.filename).suffix
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=UPLOAD_DIR) as tmp:
-            tmp.write(file.file.read())
-            logger.info(f"File saved to temporary path: {tmp.name}")
-            return Path(tmp.name)
-    except Exception as e:
-        logger.exception("Failed to save uploaded file.")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="File save failed."
-        )
+class Transcription(BaseModel):
+	language: str
+	language_probability: Optional[float] = None
+	text: str
+	segments: List[Segment]
 
-def cleanup(path: Path):
-    """
-    Remove the temporary file.
 
-    Args:
-        path (Path): The path to the file to remove.
-    """
-    try:
-        path.unlink(missing_ok=True)
-        logger.info(f"Temporary file {path} removed.")
-    except Exception as e:
-        logger.warning(f"Cleanup failed for {path}: {e}")
+@lru_cache(maxsize=4)
+def load_openai_model(name: str) -> whisper.Whisper:
+	return whisper.load_model(name, device=DEVICE)
 
-def format_result(result: dict, fmt: str) -> Union[dict, str]:
-    """
-    Format the transcription result based on the requested format.
 
-    Args:
-        result (dict): The transcription result from the model.
-        fmt (str): The desired response format.
+@lru_cache(maxsize=4)
+def load_faster_model(name: str) -> WhisperModel:
+	return WhisperModel(name, device=DEVICE, compute_type=COMPUTE_TYPE)
 
-    Returns:
-        Union[dict, str]: The formatted result.
 
-    Raises:
-        ValueError: If an unsupported format is requested.
-    """
-    segments = result.get("segments", [])
-    
-    if fmt == "txt":
-        fmt = "text"
+def save_upload_file(upload_file: UploadFile) -> Path:
+	suffix = Path(upload_file.filename).suffix
+	with tempfile.NamedTemporaryFile(
+		delete=False, suffix=suffix, dir=UPLOAD_DIR
+	) as tmp:
+		tmp.write(upload_file.file.read())
+		return Path(tmp.name)
 
-    if fmt == "text":
-        return result.get("text", "")
-    
-    if fmt in {"srt", "vtt"}:
-        lines = []
-        for i, seg in enumerate(segments, start=1):
-            start = format_timestamp(seg["start"], fmt)
-            end = format_timestamp(seg["end"], fmt)
-            text = seg["text"].strip()
-            if fmt == "srt":
-                lines.append(f"{i}\n{start} --> {end}\n{text}\n")
-            else:  # VTT format
-                lines.append(f"{start} --> {end}\n{text}\n")
-        return "".join(lines)
-    
-    # For JSON response, use Pydantic models
-    seg_objs = [
-        SegmentResponse(start=seg["start"], end=seg["end"], text=seg["text"].strip())
-        for seg in segments
-    ]
-    transcription = TranscriptionResponse(
-        filename=result.get("origin_filename", ""),
-        language=result.get("language", ""),
-        segments=seg_objs
-    )
-    return transcription.dict()
 
-def format_timestamp(seconds: float, fmt: str) -> str:
-    """
-    Convert seconds to a timestamp string in SRT or VTT format.
+def format_timestamp(seconds: float, separator: str = '.') -> str:
+	total_millis = int(seconds * 1000)
+	hours, remainder = divmod(total_millis, 3600000)
+	minutes, remainder = divmod(remainder, 60000)
+	secs, millis = divmod(remainder, 1000)
+	return f'{hours:02d}:{minutes:02d}:{secs:02d}{separator}{millis:03d}'
 
-    Args:
-        seconds (float): The time in seconds.
-        fmt (str): The desired format ('srt' or 'vtt').
 
-    Returns:
-        str: The formatted timestamp.
-    """
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    millis = int(round((seconds - int(seconds)) * 1000))
-    
-    if fmt == "srt":
-        return f"{hours:02}:{minutes:02}:{secs:02},{millis:03}"
-    else:  # VTT format uses '.' instead of ','
-        return f"{hours:02}:{minutes:02}:{secs:02}.{millis:03}"
+app = FastAPI(
+	title='고성능 Whisper API',
+	description='다양한 출력 포맷(JSON, Text, VTT, SRT)을 지원하는 Whisper API',
+	version='2.2.0',  # 버전 업데이트
+)
 
-@app.get("/models", response_model=dict)
-async def get_models():
-    """
-    Retrieve the list of available Whisper models.
 
-    Returns:
-        dict: A dictionary containing the list of models.
-    """
-    available_models = ["tiny", "base", "small", "medium", "large", "turbo"]
-    logger.info("Retrieving available models.")
-    return {"models": available_models}
-
-@app.post("/transcribe", response_model=Union[TranscriptionResponse, str])
-async def transcribe(
-    file: UploadFile = File(...),
-    model_name: str = Form("turbo"),
-    task: str = Form("transcribe"),
-    language: Optional[str] = Form(None),
-    temperature: Optional[float] = Form(0.0),
-    response_format: Optional[str] = Form("json"),
-):
-    """
-    Transcribe an uploaded audio or video file.
-
-    Args:
-        file (UploadFile): The uploaded audio or video file.
-        model_name (str): The name of the Whisper model to use.
-        task (str): The transcription task ('transcribe' or 'translate').
-        language (Optional[str]): The language of the audio.
-        temperature (Optional[float]): Sampling temperature.
-        response_format (Optional[str]): The format of the response ('json', 'text', 'srt', 'vtt', 'txt').
-
-    Returns:
-        Union[TranscriptionResponse, str]: The transcription result in the requested format.
-
-    Raises:
-        HTTPException: If an invalid response format is specified or transcription fails.
-    """
-    allowed_formats = {"json", "text", "srt", "vtt", "txt"}
-    if response_format not in allowed_formats:
-        logger.error(f"Invalid response format requested: {response_format}")
-        raise HTTPException(status_code=400, detail="Invalid response format.")
-    
-    logger.info(f"Received file: {file.filename} for transcription.")
-    temp_path = save_file(file)
-    
-    try:
-        model = load_model(model_name)
-        settings = {**DEFAULT_SETTINGS, "task": task, "temperature": temperature, "language": language}
-        logger.info(f"Starting transcription for file: {temp_path}")
-        result = model.transcribe(str(temp_path), **settings)
-        result["origin_filename"] = file.filename
-        logger.info("Transcription completed successfully.")
-        return format_result(result, response_format)
-    except Exception as e:
-        logger.exception("Transcription failed.")
-        raise HTTPException(status_code=500, detail="Transcription failed.")
-    finally:
-        cleanup(temp_path)
-
-@app.get("/", response_model=dict)
+@app.get('/', summary='API 상태 확인')
 async def root():
-    """
-    Root endpoint to verify that the API is running.
+	return {'message': '고성능 Whisper API가 정상적으로 동작 중입니다.'}
 
-    Returns:
-        dict: A welcome message.
-    """
-    return {"message": "Welcome to the Enhanced Whisper API!"}
+
+@app.post(
+	'/transcribe',
+	summary='오디오/비디오 파일 텍스트 변환 (다중 포맷 지원)',
+)
+async def transcribe(
+	file: UploadFile = File(..., description='음성 또는 영상 파일'),
+	model_name: str = Form('base', description='사용할 Whisper 모델 크기'),
+	language: Optional[str] = Form(
+		None, description='오디오 언어 (ISO 639-1 코드)'
+	),
+	engine: Literal['openai', 'faster'] = Form(
+		'faster', description='사용할 추론 엔진'
+	),
+	task: Literal['transcribe', 'translate'] = Form(
+		'transcribe', description='수행할 작업'
+	),
+	response_format: Literal['json', 'text', 'vtt', 'srt'] = Form(
+		'json', description='반환받을 결과 포맷'
+	),
+):
+	temp_path = None
+	try:
+		temp_path = save_upload_file(file)
+		logger.info(
+			f"파일 '{file.filename}' 처리 시작 (엔진: {engine}, 포맷: {response_format})"
+		)
+		transcription_result: Transcription
+		if engine == 'faster':
+			model = load_faster_model(model_name)
+			segments, info = model.transcribe(
+				str(temp_path), language=language, task=task, beam_size=5
+			)
+			segment_list = [
+				Segment(start=s.start, end=s.end, text=s.text) for s in segments
+			]
+			full_text = ' '.join(s.text.strip() for s in segment_list)
+			transcription_result = Transcription(
+				language=info.language,
+				language_probability=info.language_probability,
+				text=full_text,
+				segments=segment_list,
+			)
+		else:  # engine == "openai"
+			model = load_openai_model(model_name)
+			result = model.transcribe(
+				str(temp_path),
+				language=language,
+				task=task,
+				fp16=torch.cuda.is_available(),
+			)
+			transcription_result = Transcription(**result)
+		logger.info(f"파일 '{file.filename}' 처리 완료")
+		if response_format == 'json':
+			return transcription_result.model_dump()
+		if response_format == 'text':
+			return PlainTextResponse(content=transcription_result.text)
+		if response_format == 'vtt':
+			separator = '.'
+			lines = ['WEBVTT\n']
+			for seg in transcription_result.segments:
+				start = format_timestamp(seg.start, separator)
+				end = format_timestamp(seg.end, separator)
+				lines.append(f'{start} --> {end}\n{seg.text.strip()}\n')
+			return PlainTextResponse(content=''.join(lines))
+		if response_format == 'srt':
+			separator = ','
+			lines = []
+			for i, seg in enumerate(transcription_result.segments, start=1):
+				start = format_timestamp(seg.start, separator)
+				end = format_timestamp(seg.end, separator)
+				lines.append(f'{i}\n{start} --> {end}\n{seg.text.strip()}\n\n')
+			return PlainTextResponse(content=''.join(lines))
+	except Exception as e:
+		logger.exception('처리 중 오류 발생')
+		raise HTTPException(status_code=500, detail=f'내부 서버 오류: {str(e)}')
+	finally:
+		if temp_path and os.path.exists(temp_path):
+			os.remove(temp_path)
+			gc.collect()
+			if DEVICE == 'cuda':
+				torch.cuda.empty_cache()
+
+
+if __name__ == '__main__':
+	import uvicorn
+
+	uvicorn.run(
+		'main:app',
+		host='0.0.0.0',
+		port=8000,
+		reload=True,
+		log_config=LOGGING_CONFIG,
+	)

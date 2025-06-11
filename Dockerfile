@@ -33,30 +33,30 @@ RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt,sharing=locked \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR ${HOME_DIR}
-RUN chown -R 1001:1001 ${HOME_DIR}
+RUN chown -R ${USERNAME}:${USERNAME} ${HOME_DIR}
 USER ${USERNAME}
 
 RUN uv venv --python 3.12 --seed
-COPY --link --chown=1001:1001 pyproject.toml uv.lock ./
+COPY --link --chown=${USERNAME}:${USERNAME} pyproject.toml uv.lock ./
 RUN uv sync --frozen
 RUN ls -al
 
-COPY --link --chown=1001:1001 . .
-RUN \
-    echo "--- Preloading models... ---" && \
-    uv run app/preload/preload_all.py --engine faster && \
-    uv run app/preload/preload_all.py --engine openai && \
-    echo "--- Preload complete. Cleaning up caches. ---" && \
-    rm -rf .cache/huggingface/datasets
+COPY --link --chown=${USERNAME}:${USERNAME} . .
+# RUN \
+#     echo "--- Preloading models... ---" && \
+#     uv run app/preload/preload_all.py --engine faster && \
+#     uv run app/preload/preload_all.py --engine openai && \
+#     echo "--- Preload complete. Cleaning up caches. ---" && \
+#     rm -rf .cache/huggingface/datasets
 
 # =====================================================================
 FROM base AS final
 
 WORKDIR ${HOME_DIR}
 
-COPY --link --from=builder --chown=1001:1001 ${VENV_PATH} ${VENV_PATH}
-COPY --link --from=builder --chown=1001:1001 ${HOME_DIR}/.cache/ .cache/
-COPY --link --from=builder --chown=1001:1001 ${HOME_DIR}/app/ app/
+COPY --link --from=builder --chown=${USERNAME}:${USERNAME} ${VENV_PATH} ${VENV_PATH}
+# COPY --link --from=builder --chown=${USERNAME}:${USERNAME} ${HOME_DIR}/.cache/ .cache/
+COPY --link --from=builder --chown=${USERNAME}:${USERNAME} ${HOME_DIR}/app/ app/
 
 USER ${USERNAME}
 EXPOSE 8000

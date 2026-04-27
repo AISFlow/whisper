@@ -5,34 +5,31 @@ settings:
   excludeLinksFromLockfile: false
 
 importers:
+
   .:
     dependencies:
       pnpm:
         specifier: ^10.12.1
-        version: 10.12.1
+        version: 10.33.2
     devDependencies:
       prettier:
         specifier: ^3.4.2
         version: 3.5.3
 
 packages:
-  pnpm@10.12.1:
-    resolution:
-      {
-        integrity: sha512-8N2oWA8O6UgcXHmh2Se5Fk8sR46QmSrSaLuyRlpzaYQ5HWMz0sMnkTV4soBK8zR0ylVLopwEqLEwYKcXZ1rjrA==
-      }
-    engines: { node: '>=18.12' }
+
+  pnpm@10.33.2:
+    resolution: {integrity: sha512-qQ+vb+6rca1sblf5Tg/hoS9dzCLNdU20CulZPraj4LaxLjVAIYuzeuCDQEsfLObbKkEh6XmCm0r/lLmfSdoc+A==}
+    engines: {node: '>=18.12'}
     hasBin: true
 
   prettier@3.5.3:
-    resolution:
-      {
-        integrity: sha512-QQtaxnoDJeAkDvDKWCLiwIXkTgRhwYDEQCghU9Z6q03iyek/rxRh/2lC3HB7P8sWT2xC/y5JDctPLBIGzHKbhw==
-      }
-    engines: { node: '>=14' }
+    resolution: {integrity: sha512-QQtaxnoDJeAkDvDKWCLiwIXkTgRhwYDEQCghU9Z6q03iyek/rxRh/2lC3HB7P8sWT2xC/y5JDctPLBIGzHKbhw==}
+    engines: {node: '>=14'}
     hasBin: true
 
 snapshots:
-  pnpm@10.12.1: {}
+
+  pnpm@10.33.2: {}
 
   prettier@3.5.3: {}

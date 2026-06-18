@@ -71,7 +71,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_VERSION }}
 
@@ -133,7 +133,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_VERSION }}
 
@@ -190,7 +190,7 @@ jobs:
           swap-storage: true
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_VERSION }}
 

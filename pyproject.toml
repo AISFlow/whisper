@@ -27,7 +27,7 @@ extra-index-url = [
 ]
 
 [tool.uv.sources]
-openai-whisper = { git = "https://github.com/openai/whisper.git", rev = "dd985ac4b90cafeef8712f2998d62c59c3e62d22" }
+openai-whisper = { git = "https://github.com/openai/whisper.git", rev = "86098128c0b4f24f0e2aa2994de830614b474227" }
 
 [tool.ruff]
 line-length = 80
